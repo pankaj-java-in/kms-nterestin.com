@@ -24,7 +24,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.web.socket.config.annotation.EnableWebSocket;
 import org.springframework.web.socket.config.annotation.WebSocketConfigurer;
 import org.springframework.web.socket.config.annotation.WebSocketHandlerRegistry;
-import org.springframework.web.socket.server.standard.ServletServerContainerFactoryBean;
 
 /**
  *
@@ -55,19 +54,13 @@ public class GroupCallApp implements WebSocketConfigurer {
     return KurentoClient.create();
   }
 
-  @Bean
-  public ServletServerContainerFactoryBean createServletServerContainerFactoryBean() {
-    ServletServerContainerFactoryBean container = new ServletServerContainerFactoryBean();
-    container.setMaxTextMessageBufferSize(32768);
-    return container;
-  }
-
   public static void main(String[] args) throws Exception {
     SpringApplication.run(GroupCallApp.class, args);
   }
 
   @Override
   public void registerWebSocketHandlers(WebSocketHandlerRegistry registry) {
-    registry.addHandler(groupCallHandler(), "/groupcall");
+
+    registry.addHandler(groupCallHandler(), "/groupcall").setAllowedOrigins("*");
   }
 }

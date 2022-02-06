@@ -51,16 +51,21 @@ public class UserSession implements Closeable {
   private final MediaPipeline pipeline;
 
   private final String roomName;
+  private final Boolean isChatter;
+  private final String slotid;
   private final WebRtcEndpoint outgoingMedia;
   private final ConcurrentMap<String, WebRtcEndpoint> incomingMedia = new ConcurrentHashMap<>();
 
-  public UserSession(final String name, String roomName, final WebSocketSession session,
-      MediaPipeline pipeline) {
+  public UserSession(final String name, String roomName, String slotid, final WebSocketSession session,
+                     MediaPipeline pipeline, Boolean isChatter) {
 
     this.pipeline = pipeline;
     this.name = name;
     this.session = session;
     this.roomName = roomName;
+    this.isChatter = isChatter;
+    this.slotid = slotid;
+    //if( this.isChatter) {
     this.outgoingMedia = new WebRtcEndpoint.Builder(pipeline).build();
 
     this.outgoingMedia.addIceCandidateFoundListener(new EventListener<IceCandidateFoundEvent>() {
@@ -80,6 +85,13 @@ public class UserSession implements Closeable {
         }
       }
     });
+    //} else {
+    //this.outgoingMedia = null;
+    //}
+  }
+
+  public String getSlotid() {
+    return slotid;
   }
 
   public WebRtcEndpoint getOutgoingWebRtcPeer() {
@@ -93,6 +105,11 @@ public class UserSession implements Closeable {
   public WebSocketSession getSession() {
     return session;
   }
+
+  public Boolean getPresenter() {
+    return isChatter;
+  }
+
 
   /**
    * The room to which the user is currently attending.
@@ -115,6 +132,7 @@ public class UserSession implements Closeable {
     scParams.addProperty("sdpAnswer", ipSdpAnswer);
 
     log.trace("USER {}: SdpAnswer for {} is {}", this.name, sender.getName(), ipSdpAnswer);
+
     this.sendMessage(scParams);
     log.debug("gather candidates");
     this.getEndpointForUser(sender).gatherCandidates();
@@ -151,7 +169,9 @@ public class UserSession implements Closeable {
         }
       });
 
+
       incomingMedia.put(sender.getName(), incoming);
+
     }
 
     log.debug("PARTICIPANT {}: obtained endpoint for {}", this.name, sender.getName());
@@ -167,21 +187,22 @@ public class UserSession implements Closeable {
   public void cancelVideoFrom(final String senderName) {
     log.debug("PARTICIPANT {}: canceling video reception from {}", this.name, senderName);
     final WebRtcEndpoint incoming = incomingMedia.remove(senderName);
+    if (incoming != null) {
+      log.debug("PARTICIPANT {}: removing endpoint for {}", this.name, senderName);
+      incoming.release(new Continuation<Void>() {
+        @Override
+        public void onSuccess(Void result) throws Exception {
+          log.trace("PARTICIPANT {}: Released successfully incoming EP for {}",
+                  UserSession.this.name, senderName);
+        }
 
-    log.debug("PARTICIPANT {}: removing endpoint for {}", this.name, senderName);
-    incoming.release(new Continuation<Void>() {
-      @Override
-      public void onSuccess(Void result) throws Exception {
-        log.trace("PARTICIPANT {}: Released successfully incoming EP for {}",
-            UserSession.this.name, senderName);
-      }
-
-      @Override
-      public void onError(Throwable cause) throws Exception {
-        log.warn("PARTICIPANT {}: Could not release incoming EP for {}", UserSession.this.name,
-            senderName);
-      }
-    });
+        @Override
+        public void onError(Throwable cause) throws Exception {
+          log.warn("PARTICIPANT {}: Could not release incoming EP for {}", UserSession.this.name,
+                  senderName);
+        }
+      });
+    }
   }
 
   @Override
@@ -198,13 +219,13 @@ public class UserSession implements Closeable {
         @Override
         public void onSuccess(Void result) throws Exception {
           log.trace("PARTICIPANT {}: Released successfully incoming EP for {}",
-              UserSession.this.name, remoteParticipantName);
+                  UserSession.this.name, remoteParticipantName);
         }
 
         @Override
         public void onError(Throwable cause) throws Exception {
           log.warn("PARTICIPANT {}: Could not release incoming EP for {}", UserSession.this.name,
-              remoteParticipantName);
+                  remoteParticipantName);
         }
       });
     }
@@ -234,10 +255,12 @@ public class UserSession implements Closeable {
     if (this.name.compareTo(name) == 0) {
       outgoingMedia.addIceCandidate(candidate);
     } else {
+//      if (isChatter) {
       WebRtcEndpoint webRtc = incomingMedia.get(name);
       if (webRtc != null) {
         webRtc.addIceCandidate(candidate);
       }
+//      }
     }
   }
 

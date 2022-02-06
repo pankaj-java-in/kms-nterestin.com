@@ -31,6 +31,7 @@ import org.kurento.client.Continuation;
 import org.kurento.client.MediaPipeline;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 
 import com.google.gson.JsonArray;
@@ -64,9 +65,9 @@ public class Room implements Closeable {
     this.close();
   }
 
-  public UserSession join(String userName, WebSocketSession session) throws IOException {
-    log.info("ROOM {}: adding participant {}", this.name, userName);
-    final UserSession participant = new UserSession(userName, this.name, session, this.pipeline);
+  public UserSession join(String userName, String slotid, WebSocketSession session, Boolean isPresenter) throws IOException {
+    log.info("ROOM {}: adding participant {}", userName, userName);
+    final UserSession participant = new UserSession(userName, this.name, slotid, session, this.pipeline,isPresenter);
     joinRoom(participant);
     participants.put(participant.getName(), participant);
     sendParticipantNames(participant);
@@ -76,17 +77,19 @@ public class Room implements Closeable {
   public void leave(UserSession user) throws IOException {
     log.debug("PARTICIPANT {}: Leaving room {}", user.getName(), this.name);
     this.removeParticipant(user.getName());
-    user.close();
+    //user.close();
   }
 
   private Collection<String> joinRoom(UserSession newParticipant) throws IOException {
     final JsonObject newParticipantMsg = new JsonObject();
     newParticipantMsg.addProperty("id", "newParticipantArrived");
     newParticipantMsg.addProperty("name", newParticipant.getName());
+    newParticipantMsg.addProperty("slotid", newParticipant.getSlotid());
+    newParticipantMsg.addProperty("type", newParticipant.getPresenter());
 
     final List<String> participantsList = new ArrayList<>(participants.values().size());
     log.debug("ROOM {}: notifying other participants of new participant {}", name,
-        newParticipant.getName());
+            newParticipant.getName());
 
     for (final UserSession participant : participants.values()) {
       try {
@@ -120,7 +123,7 @@ public class Room implements Closeable {
 
     if (!unnotifiedParticipants.isEmpty()) {
       log.debug("ROOM {}: The users {} could not be notified that {} left the room", this.name,
-          unnotifiedParticipants, name);
+              unnotifiedParticipants, name);
     }
 
   }
@@ -129,17 +132,21 @@ public class Room implements Closeable {
 
     final JsonArray participantsArray = new JsonArray();
     for (final UserSession participant : this.getParticipants()) {
-      if (!participant.equals(user)) {
-        final JsonElement participantName = new JsonPrimitive(participant.getName());
-        participantsArray.add(participantName);
+      if (!participant.equals(user) && participant.getPresenter()) {
+        final JsonObject participantJson = new JsonObject();
+        participantJson.addProperty("name", participant.getName());
+        participantJson.addProperty("slotid", participant.getSlotid());
+        participantsArray.add(participantJson);
       }
     }
 
     final JsonObject existingParticipantsMsg = new JsonObject();
     existingParticipantsMsg.addProperty("id", "existingParticipants");
+    existingParticipantsMsg.addProperty("slotid", user.getSlotid());
     existingParticipantsMsg.add("data", participantsArray);
+    existingParticipantsMsg.addProperty("type", user.getPresenter());
     log.debug("PARTICIPANT {}: sending a list of {} participants", user.getName(),
-        participantsArray.size());
+            participantsArray.size());
     user.sendMessage(existingParticipantsMsg);
   }
 
@@ -158,7 +165,7 @@ public class Room implements Closeable {
         user.close();
       } catch (IOException e) {
         log.debug("ROOM {}: Could not invoke close on participant {}", this.name, user.getName(),
-            e);
+                e);
       }
     }
 
@@ -180,4 +187,46 @@ public class Room implements Closeable {
     log.debug("Room {} closed", this.name);
   }
 
+  public void sendNewRoom(WebSocketSession session) throws IOException {
+
+    final JsonObject existingParticipantsMsg = new JsonObject();
+    existingParticipantsMsg.addProperty("id", "newRoom");
+
+    synchronized (session) {
+      session.sendMessage(new TextMessage(existingParticipantsMsg.toString()));
+    }
+  }
+
+  public void sendCheckRoom(WebSocketSession session) throws IOException {
+    final JsonArray participantsArray = new JsonArray();
+    for (final UserSession participant : this.getParticipants()) {
+      if (participant.getPresenter()) {
+        final JsonElement participantName = new JsonPrimitive(participant.getName());
+        participantsArray.add(participantName);
+      }
+    }
+
+    final JsonObject existingParticipantsMsg = new JsonObject();
+    existingParticipantsMsg.addProperty("id", "checkRoom");
+    existingParticipantsMsg.add("data", participantsArray);
+
+    log.debug("USER {}: Sending message {}", name, existingParticipantsMsg);
+    synchronized (session) {
+      session.sendMessage(new TextMessage(existingParticipantsMsg.toString()));
+    }
+  }
+
+  public void healthcheck() {
+    for (String us:participants.keySet()
+         ) {
+      boolean isopen = participants.get(us).getSession().isOpen();
+      if (!isopen) {
+//        try {
+//          removeParticipant(us);
+//        } catch (IOException e) {
+//          e.printStackTrace();
+//        }
+      }
+    }
+  }
 }

@@ -17,8 +17,13 @@
 
 package org.kurento.tutorial.groupcall;
 
+import java.util.Collection;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.stream.Collector;
+import java.util.stream.Collectors;
 
 import org.kurento.client.KurentoClient;
 import org.slf4j.Logger;
@@ -59,6 +64,27 @@ public class RoomManager {
     return room;
   }
 
+  public boolean hasRoom(String roomName) {
+    log.debug("checking for room {}", roomName);
+    return rooms.get(roomName) != null;
+
+  }
+
+  public void healthcheck() {
+    for (String roomName:
+    rooms.keySet()) {
+      rooms.get(roomName).healthcheck();
+
+    }
+  }
+//
+//  public List<Room> getGroupRooms(String roomGroupPrefix) {
+//    log.debug("Searching for room {}", roomGroupPrefix);
+//    return rooms.values().stream().
+//            filter(r -> r.getName().startsWith(roomGroupPrefix)).
+//            collect(Collectors.toList());
+//  }
+
   /**
    * Removes a room from the list of available rooms.
    *
@@ -69,6 +95,10 @@ public class RoomManager {
     this.rooms.remove(room.getName());
     room.close();
     log.info("Room {} removed and closed", room.getName());
+  }
+
+  public Collection<Room> getRoomList() {
+    return rooms.values();
   }
 
 }
